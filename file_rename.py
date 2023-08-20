@@ -32,10 +32,14 @@ class SessionSettings:
             return series_dict[key]
         else:
             series_dict[key] = 0
+
             # rename old file in case of crash while saving
             os.rename(self.series_path, self.series_path + "_old")
+
+            # write new dict to file
             with open(self.series_path, 'wb') as file:
                 pickle.dump(series_dict, file)
+
             # delete old file
             os.remove(self.series_path + "_old")
             return 0
@@ -48,10 +52,31 @@ class SessionSettings:
             series_dict = pickle.load(file)
 
         series_dict[key] = num
+
         # rename old file in case of crash while saving
         os.rename(self.series_path, self.series_path + "_old")
+
+        # write new dict to file
         with open(self.series_path, 'wb') as file:
             pickle.dump(series_dict, file)
+
+        # delete old file
+        os.remove(self.series_path + "_old")
+
+    def save_config(self, config_filepath):
+        """
+        Saves current config to config file.
+        """
+        # rename old file in case of crash while saving
+        os.rename(config_filepath, config_filepath + "_old")
+
+        # write current config to file
+        config = configparser.ConfigParser()
+        config['DEFAULT'] = self.__dict__  # get instance variables as dict
+
+        with open(config_filepath, 'w') as file:
+            config.write(file)
+
         # delete old file
         os.remove(self.series_path + "_old")
 
@@ -61,6 +86,14 @@ def script_description():
               recording with options to add on a prefix/suffix that
               automatically increments a persistent value based on a config
               file"""
+
+
+def script_defaults(settings):
+    obs.obs_data_set_default_bool(settings, "is_continuation", True)
+    obs.obs_data_set_default_string(settings, "series_path", "SET PATH")
+    obs.obs_data_set_default_string(settings, "datetime_format",
+                                    "%Y-%m-%d %H-%M-%S")
+    obs.obs_data_set_default_bool(settings, "datetime_first", True)
 
 
 def script_load(settings):
@@ -82,8 +115,9 @@ def script_update(settings):
                                                            "series_path")
     session_settings.dt_format = obs.obs_data_get_string(settings,
                                                          "datetime_format")
-    session_settings.dt_first = obs.obs_data_get_string(settings,
-                                                        "datetime_first")
+    session_settings.dt_first = obs.obs_data_get_bool(settings,
+                                                      "datetime_first")
+    session_settings.save_config(config_path)
 
 
 def on_event(event):

@@ -11,10 +11,10 @@ import obspython as obs
 
 @dataclass
 class SessionSettings:
-    is_continuation: bool
+    is_series: bool
     series_path: str
-    dt_format: str
-    dt_first: bool
+    datetime_format: str
+    datetime_first: bool
 
     def get_latest(self, key):
         """
@@ -93,19 +93,20 @@ def script_defaults(settings):
     config = configparser.ConfigParser(interpolation=None)
     config.read(config_path)
     global session_settings
-    session_settings = SessionSettings(config['DEFAULT']['is_series'] == 'yes',
+    session_settings = SessionSettings(config['DEFAULT']
+                                       ['is_series'] == 'True',
                                        config['DEFAULT']['series_path'],
                                        config['DEFAULT']['datetime_format'],
                                        config['DEFAULT']
-                                       ['datetime_first'] == 'yes')
-    obs.obs_data_set_default_bool(settings, "is_continuation",
-                                  session_settings.is_continuation)
+                                       ['datetime_first'] == 'True')
+    obs.obs_data_set_default_bool(settings, "is_series",
+                                  session_settings.is_series)
     obs.obs_data_set_default_string(settings, "series_path",
                                     session_settings.series_path)
     obs.obs_data_set_default_string(settings, "datetime_format",
-                                    session_settings.dt_format)
+                                    session_settings.datetime_format)
     obs.obs_data_set_default_bool(settings, "datetime_first",
-                                  session_settings.dt_first)
+                                  session_settings.datetime_first)
 
 
 def script_load(settings):
@@ -114,14 +115,16 @@ def script_load(settings):
 
 def script_update(settings):
     global session_settings
-    session_settings.is_continuation = obs.obs_data_get_bool(settings,
-                                                             "is_continuation")
+    session_settings.is_series = obs.obs_data_get_bool(settings,
+                                                       "is_series")
     session_settings.series_path = obs.obs_data_get_string(settings,
                                                            "series_path")
-    session_settings.dt_format = obs.obs_data_get_string(settings,
-                                                         "datetime_format")
-    session_settings.dt_first = obs.obs_data_get_bool(settings,
-                                                      "datetime_first")
+    session_settings.datetime_format = (obs
+                                        .obs_data_get_string(settings,
+                                                             "datetime_format"
+                                                             ))
+    session_settings.datetime_first = obs.obs_data_get_bool(settings,
+                                                            "datetime_first")
     session_settings.save_config(config_path)
 
 
@@ -132,7 +135,8 @@ def on_event(event):
         file = get_recording()
 
         # get name for recording
-        recording_name = easygui.enterbox("Enter name:", default="Untitled")
+        recording_name = (easygui.enterbox("Enter name:", default="Untitled")
+                          .lower().replace(" ", "_"))
 
         # get part number from user with default obtained from series file
         recording_num = easygui.integerbox("Enter number:",
@@ -140,10 +144,10 @@ def on_event(event):
                                            .get_latest(recording_name) + 1)
 
         # get datetime string
-        dt = datetime.now().strftime(session_settings.dt_format)
+        dt = datetime.now().strftime(session_settings.datetime_format)
 
         # create new name
-        if session_settings.dt_first:
+        if session_settings.datetime_first:
             new_recording_name = f"{dt}_{recording_name}_{recording_num:>03}"
         else:
             new_recording_name = f"{recording_name}_{recording_num:>03}_{dt}"

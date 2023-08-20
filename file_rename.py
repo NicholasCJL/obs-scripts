@@ -9,10 +9,6 @@ import easygui
 import obspython as obs
 
 
-config_path = ""
-session_settings = None
-
-
 @dataclass
 class SessionSettings:
     is_continuation: bool
@@ -71,14 +67,18 @@ class SessionSettings:
         os.rename(config_filepath, config_filepath + "_old")
 
         # write current config to file
-        config = configparser.ConfigParser()
+        config = configparser.ConfigParser(interpolation=None)
         config['DEFAULT'] = self.__dict__  # get instance variables as dict
 
         with open(config_filepath, 'w') as file:
             config.write(file)
 
         # delete old file
-        os.remove(self.series_path + "_old")
+        os.remove(config_filepath + "_old")
+
+
+config_path = ""
+session_settings = None
 
 
 def script_description():
@@ -88,22 +88,27 @@ def script_description():
               file"""
 
 
+# initialise with config file or there will be a race condition
 def script_defaults(settings):
-    obs.obs_data_set_default_bool(settings, "is_continuation", True)
-    obs.obs_data_set_default_string(settings, "series_path", "SET PATH")
+    config = configparser.ConfigParser(interpolation=None)
+    config.read(config_path)
+    global session_settings
+    session_settings = SessionSettings(config['DEFAULT']['is_series'] == 'yes',
+                                       config['DEFAULT']['series_path'],
+                                       config['DEFAULT']['datetime_format'],
+                                       config['DEFAULT']
+                                       ['datetime_first'] == 'yes')
+    obs.obs_data_set_default_bool(settings, "is_continuation",
+                                  session_settings.is_continuation)
+    obs.obs_data_set_default_string(settings, "series_path",
+                                    session_settings.series_path)
     obs.obs_data_set_default_string(settings, "datetime_format",
-                                    "%Y-%m-%d %H-%M-%S")
-    obs.obs_data_set_default_bool(settings, "datetime_first", True)
+                                    session_settings.dt_format)
+    obs.obs_data_set_default_bool(settings, "datetime_first",
+                                  session_settings.dt_first)
 
 
 def script_load(settings):
-    config = configparser.ConfigParser()
-    config.read(config_path)
-    global session_settings
-    session_settings = SessionSettings(config['DEFAULT']['is_series'],
-                                       config['DEFAULT']['series_path'],
-                                       config['DEFAULT']['datetime_format'],
-                                       config['DEFAULT']['datetime_first'])
     obs.obs_frontend_add_event_callback(on_event)
 
 

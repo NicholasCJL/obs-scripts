@@ -1,80 +1,11 @@
 import configparser
 from datetime import datetime
-from dataclasses import dataclass
-import os
 import pathlib
-import pickle
 
 import easygui
 import obspython as obs
 
-
-@dataclass
-class SessionSettings:
-    is_series: bool
-    series_path: str
-    datetime_format: str
-    datetime_first: bool
-
-    def get_latest(self, key):
-        """
-        Gets index of latest recording of `key`, else creates key in
-        series_path and returns 0.
-        """
-        with open(self.series_path, 'rb') as file:
-            series_dict = pickle.load(file)
-
-        if key in series_dict:
-            return series_dict[key]
-        else:
-            series_dict[key] = 0
-
-            # rename old file in case of crash while saving
-            os.rename(self.series_path, self.series_path + "_old")
-
-            # write new dict to file
-            with open(self.series_path, 'wb') as file:
-                pickle.dump(series_dict, file)
-
-            # delete old file
-            os.remove(self.series_path + "_old")
-            return 0
-
-    def set_latest(self, key, num):
-        """
-        Sets index of latest recording of 'key'.
-        """
-        with open(self.series_path, 'rb') as file:
-            series_dict = pickle.load(file)
-
-        series_dict[key] = num
-
-        # rename old file in case of crash while saving
-        os.rename(self.series_path, self.series_path + "_old")
-
-        # write new dict to file
-        with open(self.series_path, 'wb') as file:
-            pickle.dump(series_dict, file)
-
-        # delete old file
-        os.remove(self.series_path + "_old")
-
-    def save_config(self, config_filepath):
-        """
-        Saves current config to config file.
-        """
-        # rename old file in case of crash while saving
-        os.rename(config_filepath, config_filepath + "_old")
-
-        # write current config to file
-        config = configparser.ConfigParser(interpolation=None)
-        config['DEFAULT'] = self.__dict__  # get instance variables as dict
-
-        with open(config_filepath, 'w') as file:
-            config.write(file)
-
-        # delete old file
-        os.remove(config_filepath + "_old")
+from utils import DropdownBox, InputBox, SessionSettings
 
 
 config_path = ""
@@ -98,7 +29,9 @@ def script_defaults(settings):
                                        config['DEFAULT']['series_path'],
                                        config['DEFAULT']['datetime_format'],
                                        config['DEFAULT']
-                                       ['datetime_first'] == 'True')
+                                       ['datetime_first'] == 'True',
+                                       config['DEFAULT']
+                                       ['sort_latest'] == 'True')
     obs.obs_data_set_default_bool(settings, "is_series",
                                   session_settings.is_series)
     obs.obs_data_set_default_string(settings, "series_path",
@@ -107,6 +40,8 @@ def script_defaults(settings):
                                     session_settings.datetime_format)
     obs.obs_data_set_default_bool(settings, "datetime_first",
                                   session_settings.datetime_first)
+    obs.obs_data_set_default_bool(settings, "sort_latest",
+                                  session_settings.sort_latest)
 
 
 def script_load(settings):
@@ -125,6 +60,8 @@ def script_update(settings):
                                                              ))
     session_settings.datetime_first = obs.obs_data_get_bool(settings,
                                                             "datetime_first")
+    session_settings.sort_latest = obs.obs_data_get_bool(settings,
+                                                         "sort_latest")
     session_settings.save_config(config_path)
 
 
@@ -134,14 +71,24 @@ def on_event(event):
         # get Path object pointing to stopped recording
         file = get_recording()
 
+        # load series data
+        series_data = session_settings.get_series()
+        if session_settings.sort_latest:  # sort keys by timestamp
+            series_data.sort(key=lambda x: x[1]['timestamp'], reverse=True)
+        else:  # sort keys in alphabetical order
+            series_data.sort(key=lambda x: x[0])
+
         # get name for recording
-        recording_name = (easygui.enterbox("Enter name:", default="Untitled")
-                          .lower().replace(" ", "_"))
+        recording_name_UI = DropdownBox([series[0] for series in series_data])
+        recording_name = (recording_name_UI.get_value().lower()
+                          .replace(" ", "_"))
+        if recording_name == "":  # If nothing was entered
+            recording_name = "untitled"
 
         # get part number from user with default obtained from series file
-        recording_num = easygui.integerbox("Enter number:",
-                                           default=session_settings
-                                           .get_latest(recording_name) + 1)
+        recording_num_UI = InputBox(session_settings
+                                    .get_latest(recording_name) + 1)
+        recording_num = int(recording_num_UI.get_value())
 
         # get datetime string
         dt = datetime.now().strftime(session_settings.datetime_format)
@@ -152,12 +99,18 @@ def on_event(event):
         else:
             new_recording_name = f"{recording_name}_{recording_num:>03}_{dt}"
 
-        # rename recording
-        file.rename(pathlib.Path(file.parent,
-                                 f"{new_recording_name}{file.suffix}"))
-
         # update part number
-        session_settings.set_latest(recording_name, recording_num)
+        session_settings.set_latest(recording_name, recording_num,
+                                    datetime.now().timestamp())
+
+        # rename recording
+        while True:  # keep trying while file is being accessed
+            try:
+                file.rename(pathlib.Path(file.parent,
+                                         f"{new_recording_name}{file.suffix}"))
+                break
+            except PermissionError:
+                continue
 
 
 def get_recording():

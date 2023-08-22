@@ -2,7 +2,6 @@ import configparser
 from datetime import datetime
 import pathlib
 
-import easygui
 import obspython as obs
 
 from utils import DropdownBox, InputBox, SessionSettings

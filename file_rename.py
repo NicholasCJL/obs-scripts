@@ -70,12 +70,15 @@ def on_event(event):
         # get Path object pointing to stopped recording
         file = get_recording()
 
-        # load series data
-        series_data = session_settings.get_series()
-        if session_settings.sort_latest:  # sort keys by timestamp
-            series_data.sort(key=lambda x: x[1]['timestamp'], reverse=True)
-        else:  # sort keys in alphabetical order
-            series_data.sort(key=lambda x: x[0])
+        # load series data if series
+        if session_settings.is_series:
+            series_data = session_settings.get_series()
+            if session_settings.sort_latest:  # sort keys by timestamp
+                series_data.sort(key=lambda x: x[1]['timestamp'], reverse=True)
+            else:  # sort keys in alphabetical order
+                series_data.sort(key=lambda x: x[0])
+        else:
+            series_data = [("",)]  # empty string for dropdownbox
 
         # get name for recording
         recording_name_UI = DropdownBox([series[0] for series in series_data])
@@ -85,18 +88,22 @@ def on_event(event):
             recording_name = "untitled"
 
         # get part number from user with default obtained from series file
-        recording_num_UI = InputBox(session_settings
-                                    .get_latest(recording_name) + 1)
-        recording_num = int(recording_num_UI.get_value())
+        if session_settings.is_series:
+            recording_num_UI = InputBox(session_settings
+                                        .get_latest(recording_name) + 1)
+            recording_num = int(recording_num_UI.get_value())
 
         # get datetime string
         dt = datetime.now().strftime(session_settings.datetime_format)
 
         # create new name
+        recording_title = (f"{recording_name}_{recording_num:>03}"
+                           if session_settings.is_series else
+                           recording_name)
         if session_settings.datetime_first:
-            new_recording_name = f"{dt}_{recording_name}_{recording_num:>03}"
+            new_recording_name = f"{dt}_{recording_title}"
         else:
-            new_recording_name = f"{recording_name}_{recording_num:>03}_{dt}"
+            new_recording_name = f"{recording_title}_{dt}"
 
         # update part number
         session_settings.set_latest(recording_name, recording_num,
